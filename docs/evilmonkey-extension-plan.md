@@ -300,8 +300,15 @@ Phase 2 deliverable: `docs/phase-2-notes.md` (tool inventory, design choices, va
 - [ ] A representative task such as hiding sponsored feed cards tests both target and ordinary cards, dynamic additions, and duplicate observer behavior.
 - [ ] Each assertion reports PASS, FAIL, NOT_RUN, or INCONCLUSIVE with evidence and test conditions.
 - [ ] A failed assertion feeds evidence back into a revision cycle and demonstrates at least one repair.
-- [ ] Installation is impossible without approval of the currently displayed revision and permissions.
-- [ ] Reload, cleanup, and irreversible page/server effects are explained accurately.
+- [x] Installation is impossible without approval of the currently displayed revision and permissions.
+- [x] Reload, cleanup, and irreversible page/server effects are explained accurately.
+
+Phase 3 implementation is complete and build-verified; see
+`docs/phase-3-notes.md`. The two checked criteria were verified by code
+inspection (`EvmCurseInstall` enforces `checkInstallApproval` and throws
+`install-refused` otherwise; reload/cleanup/irreversible semantics are
+implemented in the runner and stated in the UI and notes). The remaining
+three need live Chrome testing; the notes doc gives the exact procedure.
 
 ### Phase 4: Claude Code Backend
 

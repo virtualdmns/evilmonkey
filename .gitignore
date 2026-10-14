@@ -1,4 +1,5 @@
 /dist*/
+violentmonkey/dist*/
 node_modules/
 *.log
 .eslintcache

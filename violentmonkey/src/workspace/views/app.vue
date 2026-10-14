@@ -89,7 +89,7 @@
           <div class="ws-row"><strong>Code</strong></div>
           <textarea v-model="newCode" rows="8" class="ws-mono ws-input" placeholder="// candidate userscript code; runs in the page during tests"></textarea>
           <div class="ws-row"><strong>Name</strong><input v-model="newName" class="ws-input" /></div>
-          <div class="ws-row"><strong>Matches</strong><input v-model="newMatches" class="ws-input" placeholder=https://example.com/* (comma separated; defaults to session origin)" /></div>
+          <div class="ws-row"><strong>Matches</strong><input v-model="newMatches" class="ws-input" placeholder="https://example.com/* (comma separated; defaults to session origin)" /></div>
           <div class="ws-row"><strong>Grants</strong><input v-model="newGrants" class="ws-input" placeholder="none (comma separated)" /></div>
           <div class="ws-row"><strong>Run at</strong>
             <select v-model="newRunAt" class="ws-input">
@@ -135,7 +135,7 @@
             </div>
             <div class="ws-row"><strong v-text="candidateDetail.diff ? 'Code (diff vs parent):' : 'Code:'" /></div>
             <pre v-if="!candidateDetail.diff" class="ws-mono ws-scroll" v-text="candidateDetail.code" />
-            <pre v-else class="ws-mono ws-scroll"><div v-for="(l, idx) in candidateDetail.diff" :key="idx" :style="diffStyle(l.type)" v-text="`${l.type === 'add' ? '+' : l.type === 'del' ? '-' : ' '} ${l.text}`" /></pre>
+            <div v-else class="ws-mono ws-scroll"><div v-for="(l, idx) in candidateDetail.diff" :key="idx" :style="diffStyle(l.type)" v-text="`${l.type === 'add' ? '+' : l.type === 'del' ? '-' : ' '} ${l.text}`" /></div>
             <div class="ws-banner warn">
               Test fidelity is unverified. Temporary execution does not reproduce GM APIs, @require/@resource loading, grant enforcement, or production run timing. Treat results as evidence from a bounded run, not as production equivalence.
             </div>

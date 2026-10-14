@@ -229,11 +229,13 @@ Record each decision, alternatives, consequences, and a revisit trigger in the P
 - Record architecture decisions, security boundaries, distribution assumptions, and unresolved risks.
 
 **Acceptance criteria**:
-- [ ] Gap analysis names source files and the exact source revision.
-- [ ] MCP server and extension MCP client responsibilities are clearly separated.
-- [ ] Claude Code and Codex embedded-session integration paths are backed by current official documentation.
-- [ ] Chrome tool capability matrix identifies permissions, limitations, and viable fallbacks.
-- [ ] Architecture decisions list alternatives and explain unresolved items.
+- [x] Gap analysis names source files and the exact source revision.
+- [x] MCP server and extension MCP client responsibilities are clearly separated.
+- [x] Claude Code and Codex embedded-session integration paths are backed by current official documentation.
+- [x] Chrome tool capability matrix identifies permissions, limitations, and viable fallbacks.
+- [x] Architecture decisions list alternatives and explain unresolved items.
+
+Completed deliverable: `docs/phase-0-audit.md` (with review corrections applied).
 
 ### Phase 1: Chrome Workspace and Shared Session Foundation
 
@@ -253,7 +255,11 @@ Record each decision, alternatives, consequences, and a revisit trigger in the P
 - [ ] Session scope defaults to the selected tab and reports navigation or target changes.
 - [ ] Users can stop an active task and see which operations could not be recalled.
 - [ ] Existing script management works without configuring an agent backend.
-- [ ] No agent or browser tool can bypass the shared policy gate.
+- [x] No agent or browser tool can bypass the shared policy gate.
+
+Phase 1 deliverable notes: `docs/phase-1-notes.md`. The first four criteria need
+live Chrome verification (no interactive browser was available); the last is
+verified by code inspection of the single gated dispatch path.
 
 ### Phase 2: Browser Evidence and Investigation Tools
 

@@ -20,6 +20,7 @@ function readManifest() {
     manifest_version: 3,
     minimum_chrome_version: '135.0', // chrome.userScripts.execute
     background: { service_worker: 'sw.js' },
+    side_panel: { default_path: 'workspace/index.html' },
     browser_specific_settings: undefined,
     content_scripts: undefined,
     incognito: 'split',
@@ -32,6 +33,7 @@ function readManifest() {
       !isProd && 'declarativeNetRequestFeedback',
       'identity',
       'offscreen',
+      'sidePanel',
       'userScripts',
       'webNavigation',
     ].filter(Boolean)),

@@ -1,0 +1,59 @@
+/* EvilMonkey workspace (side panel) styles. Base UI comes from @/common/ui/style. */
+.page-workspace {
+  min-width: 280px;
+  padding: 12px;
+  font-size: 13px;
+}
+.page-workspace h1 {
+  font-size: 15px;
+  margin: 0 0 8px;
+}
+.page-workspace h2 {
+  font-size: 13px;
+  margin: 12px 0 6px;
+}
+.ws-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+}
+.ws-card {
+  border: 1px solid var(--fill-5, #ddd);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 6px 0;
+}
+.ws-card.active {
+  border-color: var(--primary, #3a7bd5);
+}
+.ws-muted {
+  opacity: 0.65;
+}
+.ws-mono {
+  font-family: monospace;
+  font-size: 12px;
+  word-break: break-all;
+}
+.ws-banner {
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 8px 0;
+  background: var(--fill-2, #f5f5f5);
+}
+.ws-banner.warn {
+  background: #fff4e0;
+}
+.ws-events {
+  max-height: 220px;
+  overflow-y: auto;
+}
+.ws-events li {
+  margin: 2px 0;
+}
+.ws-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0;
+}

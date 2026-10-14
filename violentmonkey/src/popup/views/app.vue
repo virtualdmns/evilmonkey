@@ -38,6 +38,14 @@
         <icon name="plus"></icon>
       </span>
       <span
+        v-if="HAS_SIDE_PANEL"
+        class="menu-area"
+        :data-message="i18n('menuWorkspace')"
+        :tabIndex
+        @click="onOpenWorkspace">
+        <icon name="code"></icon>
+      </span>
+      <span
         class="menu-area"
         :tabIndex
         :_item.prop="{}"
@@ -236,7 +244,7 @@ import {
 } from '@/common';
 import handlers from '@/common/handlers';
 import { objectPick } from '@/common/object';
-import { EXTERNAL_LINK_PROPS, getActiveElement } from '@/common/ui';
+import { EXTERNAL_LINK_PROPS, getActiveElement, showMessage } from '@/common/ui';
 import Icon from '@/common/ui/icon';
 import SettingsPopup from '@/common/ui/settings-popup.vue';
 import { getSortCollator } from '@/common/ui/util';
@@ -246,6 +254,8 @@ import { isFullscreenPopup, store } from '../utils';
 let mousedownElement;
 const HOME = extensionManifest.homepage_url.split('/')[2];
 const NAME = `${extensionManifest.name} ${__.VM_VER}${__.MV3 ? ' MV3' : ''}`;
+/** Side Panel workspace entry point; Chrome MV3 only (U3). */
+const HAS_SIDE_PANEL = __.MV3 && !IS_FIREFOX;
 const TARDY_MATCH = i18n('msgTardyMatch');
 const INJECT_LEARN = IS_FIREFOX
   ? i18n('labelFirefoxPatchCspPopup', ['<content>', i18n('labelFirefoxPatchCsp')])
@@ -438,6 +448,23 @@ function onManage(evt) {
   sendCmdDirectly('OpenDashboard',
     evt === 1 || evt.button === 1 || evt.ctrlKey ? TAB_SETTINGS : '')
   .then(close);
+}
+/**
+ * Open the EvilMonkey workspace side panel. chrome.sidePanel.open must run
+ * in the click gesture (U3), so this stays a direct event handler.
+ */
+async function onOpenWorkspace() {
+  try {
+    if (!globalThis.chrome?.sidePanel?.open) {
+      showMessage('Side Panel is not available in this browser');
+      return;
+    }
+    const win = await globalThis.chrome.windows.getCurrent();
+    await globalThis.chrome.sidePanel.open({ windowId: win.id });
+    close();
+  } catch (err) {
+    showMessage(`${err?.message || err}`);
+  }
 }
 function onOpenUrl(e) {
   const el = e.target.closest('a[href][target=_blank]');

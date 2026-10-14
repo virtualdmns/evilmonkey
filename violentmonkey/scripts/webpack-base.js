@@ -59,6 +59,7 @@ const pages = [
   'confirm',
   'options',
   'popup',
+  'workspace',
 ].filter(Boolean);
 const createHtmlPage = key => new HtmlWebpackPlugin({
   ...defaultHtmlOptions,

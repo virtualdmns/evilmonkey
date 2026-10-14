@@ -906,6 +906,9 @@ menuScriptDisabled:
 menuScriptEnabled:
   description: Menu item showing the status of Violentmonkey, when enabled.
   message: Scripts enabled
+menuWorkspace:
+  description: Menu item to open the EvilMonkey agent workspace side panel.
+  message: Open workspace
 msgCheckingForUpdate:
   description: Message shown when a script is being checked for updates by version numbers.
   message: Checking for updates...

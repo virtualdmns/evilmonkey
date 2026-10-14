@@ -32,6 +32,7 @@ import {
   invokeTool,
   registerTool,
 } from './policy';
+import { getCapabilities } from './evidence';
 import {
   getEventTail,
   getIndex,
@@ -98,9 +99,25 @@ addOwnCommands({
       backend: BACKEND_NONE,
       budget,
     });
+    // Session start report: distinguish available, unavailable, and
+    // not-yet-instrumented capabilities (Phase 2 acceptance criterion).
+    // Best-effort: a failed probe must not fail session creation.
+    let capabilities = null;
+    try {
+      const caps = await getCapabilities(session);
+      capabilities = {
+        available: caps.items.filter(i => i.status === 'available').map(i => i.name),
+        unavailable: caps.items.filter(i => i.status === 'unavailable').map(i => i.name),
+        notInstrumented: caps.items.filter(i => i.status === 'not-instrumented').map(i => i.name),
+      };
+    } catch (e) {
+      capabilities = { error: `${e?.message || e}` };
+    }
     await appendEvent(session, 'session-created', {
       tabId: tab.id,
       url: session.target.url,
+      epoch: session.target.documentEpoch,
+      capabilities,
     });
     await saveLiveSession(session);
     await updateIndexEntry(session, false);
@@ -225,6 +242,7 @@ registerTool('target.describe', {
       url: session.target.url,
       origin: session.target.origin,
       changed: session.target.changed,
+      epoch: session.target.documentEpoch,
       live: !!tab,
       liveUrl: tab ? tab.pendingUrl || tab.url || '' : '',
     };
@@ -233,11 +251,12 @@ registerTool('target.describe', {
 
 /**
  * Track navigation on session target tabs. URL/origin changes update the
- * target, record an event, and (on origin change) arm the policy gate's
- * re-approval requirement for further tool use.
+ * target, record an event, bump the document epoch (so evidence refs from
+ * the old document fail clearly as stale), and (on origin change) arm the
+ * policy gate's re-approval requirement for further tool use.
  */
 function watchTargets() {
-  const onCommitted = async ({ tabId, url, frameId }) => {
+  const noteNavigation = async ({ tabId, url, frameId }, via) => {
     if (frameId !== 0 || !url) return;
     const index = await getIndex();
     for (const entry of Object.values(index)) {
@@ -253,23 +272,35 @@ function watchTargets() {
       }
       session.target.url = url;
       session.target.changed = true;
+      session.target.documentEpoch += 1;
       session.target.lastChange = {
         at: Date.now(),
+        via,
         originChanged: prevOrigin !== session.target.origin,
       };
       await appendEvent(touch(session), 'target-changed', {
         url,
+        via,
+        epoch: session.target.documentEpoch,
         originChanged: session.target.lastChange.originChanged,
       });
       await saveLiveSession(session);
     }
   };
   if (chrome.webNavigation?.onCommitted) {
-    chrome.webNavigation.onCommitted.addListener(onCommitted);
+    chrome.webNavigation.onCommitted.addListener(details => noteNavigation(details, 'committed'));
   } else if (browser.tabs?.onUpdated) {
     browser.tabs.onUpdated.addListener((tabId, info) => {
-      if (info.url) onCommitted({ tabId, url: info.url, frameId: 0 });
+      if (info.url) noteNavigation({ tabId, url: info.url, frameId: 0 }, 'tabs-updated');
     });
+  }
+  // SPA route changes do not commit a new document, but they replace the
+  // content evidence was collected against, so they bump the epoch too.
+  // The url guard inside noteNavigation keeps back/forward (which may fire
+  // both events) from double-bumping.
+  if (chrome.webNavigation?.onHistoryStateUpdated) {
+    chrome.webNavigation.onHistoryStateUpdated.addListener(
+      details => noteNavigation(details, 'history'));
   }
 }
 

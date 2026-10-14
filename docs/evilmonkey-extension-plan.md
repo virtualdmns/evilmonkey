@@ -275,11 +275,13 @@ verified by code inspection of the single gated dispatch path.
 - Return explicit unsupported statuses for tools outside the implemented capability matrix.
 
 **Acceptance criteria**:
-- [ ] A tool result identifies target tab/frame, document epoch, provenance, warnings, limitations, and any next-page cursor.
-- [ ] Selector candidates include observed match count and validation status; stale candidates fail clearly after navigation.
-- [ ] Page content is treated as untrusted evidence rather than tool policy or agent instructions.
-- [ ] Collection limits and redaction are enforced before evidence reaches a provider.
-- [ ] The session start report distinguishes available, unavailable, and not-yet-instrumented capabilities.
+- [x] A tool result identifies target tab/frame, document epoch, provenance, warnings, limitations, and any next-page cursor. (Verified by code inspection: the single `envelope()` result path in `src/background/evm/evidence.js` always emits every required field; see docs/phase-2-notes.md.)
+- [ ] Selector candidates include observed match count and validation status; stale candidates fail clearly after navigation. (Needs live Chrome: snapshot, propose, navigate, re-run with the old epoch.)
+- [x] Page content is treated as untrusted evidence rather than tool policy or agent instructions. (Verified by code inspection: `provenance.untrusted: true` on every result, redaction boundary, policy gate never reads page content.)
+- [x] Collection limits and redaction are enforced before evidence reaches a provider. (Verified by code inspection: hard caps in collectors and walker, `redactForProvider` on every payload. Known limitation: value-embedded secrets under innocuous keys are not caught.)
+- [x] The session start report distinguishes available, unavailable, and not-yet-instrumented capabilities. (Verified by code inspection: `EvmSessionCreate` attaches the three-way summary to the session-created event.)
+
+Phase 2 deliverable: `docs/phase-2-notes.md` (tool inventory, design choices, validation, live-test list).
 
 ### Phase 3: Curse Draft, Bounded Test, and Approval Vertical Slice
 

@@ -37,16 +37,24 @@ const tools = new Map();
 
 /**
  * @param {string} name
- * @param {{ risk: string, invoke: (args: Object, ctx: { session: Object }) => Promise<?> }} def
+ * @param {{ risk: string, invoke: (args: Object, ctx: { session: Object }) => Promise<?>, unsupported?: string }} def
+ * A tool registered with `unsupported` is a known capability the project
+ * deliberately does not implement (for example anything requiring
+ * chrome.debugger, excluded by D4). Invoking it returns an explicit
+ * unsupported status instead of pretending the tool exists.
  */
-export function registerTool(name, { risk, invoke }) {
+export function registerTool(name, { risk, invoke, unsupported }) {
+  if (unsupported) {
+    tools.set(name, { risk: RISK_READ, invoke: null, unsupported });
+    return;
+  }
   if (!TOOL_RISKS.includes(risk)) {
     throw new Error(`Unknown tool risk level: ${risk}`);
   }
   if (typeof invoke !== 'function') {
     throw new Error(`Tool ${name} has no invoke function`);
   }
-  tools.set(name, { risk, invoke });
+  tools.set(name, { risk, invoke, unsupported: '' });
 }
 
 export function listTools() {
@@ -95,6 +103,9 @@ export async function invokeTool(sessionId, name, args = {}, callCtx = {}) {
   const tool = tools.get(name);
   if (!tool) {
     return { ok: false, reason: 'unknown-tool' };
+  }
+  if (tool.unsupported) {
+    return { ok: false, reason: 'unsupported', detail: tool.unsupported };
   }
   const session = await getLiveSession(sessionId);
   const decision = checkPolicy(session, {

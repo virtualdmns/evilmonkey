@@ -69,6 +69,16 @@
           <div><strong>Target (gated tool result)</strong></div>
           <pre class="ws-mono" v-text="targetInfo" />
         </div>
+        <h2>Evidence (Phase 2)</h2>
+        <div class="ws-actions">
+          <button @click="onCapabilities" :disabled="!isLive">Capabilities</button>
+          <button @click="onSnapshot" :disabled="!isLive">Snapshot</button>
+          <button @click="onConsoleRead" :disabled="!isLive">Read console</button>
+        </div>
+        <div class="ws-banner" v-if="evidenceInfo">
+          <div><strong v-text="evidenceTitle" /></div>
+          <pre class="ws-mono" v-text="evidenceInfo" />
+        </div>
       </div>
       <h2>Events</h2>
       <ul class="ws-events">
@@ -83,11 +93,12 @@
 
 <script setup>
 /**
- * EvilMonkey workspace (Phase 1). Side panel UI for backend-neutral agent
- * sessions: list, inspect, checkpoint, stop, and recover sessions. All
- * actions go through the background session commands; tool calls pass the
- * shared policy gate. User-visible strings are English for now; full
- * localization is deferred to a later phase.
+ * EvilMonkey workspace (Phase 1 + Phase 2). Side panel UI for
+ * backend-neutral agent sessions: list, inspect, checkpoint, stop, recover,
+ * and run browser evidence tools. All actions go through the background
+ * session commands; tool calls pass the shared policy gate. User-visible
+ * strings are English for now; full localization is deferred to a later
+ * phase.
  */
 import { computed, onMounted, ref } from 'vue';
 import { sendCmdDirectly } from '@/common';
@@ -99,6 +110,8 @@ const detail = ref(null);
 const error = ref('');
 const stopReport = ref(null);
 const targetInfo = ref('');
+const evidenceInfo = ref('');
+const evidenceTitle = ref('');
 
 const backendReady = computed(() => false); // no agent backend in Phase 1
 const target = computed(() => detail.value?.session?.target);
@@ -131,6 +144,7 @@ async function select(id, keep = false) {
   selectedId.value = id;
   stopReport.value = null;
   targetInfo.value = '';
+  evidenceInfo.value = '';
   try {
     detail.value = await sendCmdDirectly('EvmSessionGet', { id });
   } catch (e) {
@@ -183,6 +197,35 @@ async function onDescribeTarget() {
   } catch (e) {
     error.value = `${e?.message || e}`;
   }
+}
+
+async function runEvidenceTool(title, tool, args) {
+  evidenceInfo.value = '';
+  evidenceTitle.value = title;
+  try {
+    const res = await sendCmdDirectly('EvmToolInvoke', {
+      sessionId: selectedId.value,
+      tool,
+      args: args || {},
+    });
+    evidenceInfo.value = res.ok
+      ? JSON.stringify(res.data, null, 2)
+      : `denied: ${res.reason}${res.detail ? ` (${res.detail})` : ''}${res.requiresApproval ? ` (approval: ${res.requiresApproval})` : ''}`;
+  } catch (e) {
+    error.value = `${e?.message || e}`;
+  }
+}
+
+async function onCapabilities() {
+  await runEvidenceTool('Capabilities', 'evidence.capabilities', {});
+}
+
+async function onSnapshot() {
+  await runEvidenceTool('DOM snapshot', 'page.snapshot', { limit: 50 });
+}
+
+async function onConsoleRead() {
+  await runEvidenceTool('Console', 'console.read', {});
 }
 
 onMounted(refresh);

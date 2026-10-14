@@ -33,6 +33,10 @@ function readManifest() {
       !isProd && 'declarativeNetRequestFeedback',
       'identity',
       'offscreen',
+      // Phase 2: one-shot content injection for browser evidence tools
+      // (chrome.scripting.executeScript, ISOLATED/MAIN worlds). Normal
+      // permission, no install warning. Not the userscript engine.
+      'scripting',
       'sidePanel',
       'userScripts',
       'webNavigation',

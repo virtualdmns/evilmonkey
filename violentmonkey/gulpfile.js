@@ -6,7 +6,7 @@ const plumber = require('gulp-plumber');
 const Sharp = require('sharp');
 const spawn = require('cross-spawn');
 const i18n = require('./scripts/i18n');
-const { getVersion, isBeta } = require('./scripts/version-helper');
+const { getVersion } = require('./scripts/version-helper');
 const { buildManifest } = require('./scripts/manifest-helper');
 const pkg = require('./package.json');
 const { MV3, DIST } = require('./scripts/common');
@@ -63,7 +63,7 @@ async function createIcons() {
   const ALPHA = 0.5;
   const dist = `${DIST}/public/images`;
   await fs.mkdir(dist, { recursive: true });
-  const icon = Sharp(`src/resources/icon${isBeta() ? '-beta' : ''}.png`);
+  const icon = Sharp('../img/logo_notext_small.webp');
   const gray = icon.clone().grayscale();
   const transparent = icon.clone().composite([{
     input: Buffer.from([255, 255, 255, 256 * ALPHA]),
@@ -77,7 +77,12 @@ async function createIcons() {
     ['w', transparent],
   ];
   const handle = (size, type = '', image = icon) => {
-    let res = image.clone().resize({ width: size });
+    let res = image.clone().resize({
+      width: size,
+      height: size,
+      fit: 'contain',
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    });
     if (size < 48) res = res.sharpen(size < 32 ? 0.5 : 0.25);
     return res.toFile(`${dist}/icon${size}${type}.png`);
   };
@@ -87,9 +92,14 @@ async function createIcons() {
   }]);
   const handle16 = async ([type, image]) => {
     const res = image.clone()
-    .resize({ width: 18 })
+    .resize({
+      width: 18,
+      height: 18,
+      fit: 'contain',
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    })
     .sharpen(0.5, 0)
-    .extract({ left: 1, top: 2, width: 16, height: 16 });
+    .extract({ left: 1, top: 1, width: 16, height: 16 });
     return (type === 'w' ? res : await darkenOuterEdge(res))
     .toFile(`${dist}/icon16${type}.png`);
   };

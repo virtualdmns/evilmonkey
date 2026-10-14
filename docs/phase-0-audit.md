@@ -1,7 +1,8 @@
 # Phase 0: Source and Integration Audit
 
-Status: Complete, pending review
+Status: Complete, review corrections applied
 Audit date: 2026-10-14
+Last revised: 2026-10-14 (review corrections: explicit MCP tool-registration decision, test fidelity reframed as hypothesis with verification matrix, pinned upstream MCP commit SHA, deferred-check labeling and cross-reference fixes)
 Plan: `docs/evilmonkey-extension-plan.md`, Phase 0 ("Source and Integration Audit")
 Objective from the plan: produce the required source-backed gap analysis and architecture decisions before adding agent architecture.
 
@@ -22,7 +23,9 @@ Interpretation: the baseline is a normal upstream checkout, not a fork with loca
 
 ## 2. Upstream MCP server: `violentmonkey/mcp`
 
-Observed (upstream repository `violentmonkey/mcp`, inspected at current main on 2026-10-14):
+Observed (upstream repository `violentmonkey/mcp`, inspected at commit `07fb99c31a7c100adcde175edde6200180e5dc41` on 2026-10-14):
+
+- Pinned inspection commit: `07fb99c31a7c100adcde175edde6200180e5dc41` ("chore: build packages in prepublishOnly", 2026-10-09), the main-branch head on 2026-10-14, one commit after the v0.1.1 release (`714a282af278296e57e6dee577e8bc7601ba6a81`). All server, client, and protocol findings below are reproducible against this commit.
 
 - Packages and versions: `@violentmonkey/mcp` 0.1.1 (the server), `@violentmonkey/mcp-client` 0.1.1 (the browser WebSocket client), `@violentmonkey/mcp-protocol` 0.1.1 (constants, types, zod schemas). The extension baseline depends on `@violentmonkey/mcp-client` `^0.1.1`.
 - Server README documents the topology: the agent speaks MCP (stdio or HTTP) to a local `@violentmonkey/mcp` server process; the extension connects to that server over a WebSocket authenticated with a token. Quote of the architecture from the README, paraphrased: the server owns the tool list and schemas; agent tool calls are forwarded to the extension; results are returned.
@@ -104,7 +107,7 @@ Observed in `violentmonkey/src/common/browser-scripts-api.js` and `violentmonkey
   - `registerInjector` registers `INJECTED_API_ID` (`'1001'`) at `document_start`, `allFrames: true`, `matches: ['<all_urls>']`, with `js: [{ file: 'injected-web.js' }, { file: 'injected.js' }]`. It first calls `api.configureWorld` with a custom CSP (`script-src 'self' 'unsafe-inline' 'unsafe-eval'`, `style-src * 'unsafe-inline' data: blob:`) and `messaging: true`.
   - Per-navigation script data is registered under `INJECTED_DATA_ID + url` (`'1000' + url`) with the URL escaped for matches, then `chrome.userScripts.update` widens the API script's matches. Unregistration removes the per-URL data script.
   - `executeScript(tabId, code, runAt, frameId)` calls `chrome.userScripts.execute` with `injectImmediately` set when `runAt` is `document_start` or truthy, returning the first result. This is the function `injectContentRealm` uses for content-realm injection.
-  - Registration failure handling: if `chrome.userScripts` is unavailable, the code shows a localized `userScriptsPermissionNote`, choosing a newer variant for Chrome >= 138 and an older one below. Observed code behavior only; the exact Chrome 138 platform change behind the two notes is unverified (open item U8).
+  - Registration failure handling: if `chrome.userScripts` is unavailable, the code shows a localized `userScriptsPermissionNote`, choosing a newer variant for Chrome >= 138 and an older one below. Observed code behavior only; the exact Chrome 138 platform change behind the two notes is unverified (open item U4).
 - Pre-injection pipeline (`preinject-core.js`): `webRequest.onSendHeaders`/`onHeadersReceived` listeners prepare per-URL script bags, with CSP/nonce detection (`detectStrictCsp`), an XHR-inject fallback path, and blob-rule revocation for MV3. A 5-minute in-memory cache holds prepared bags.
 - The plan's Chrome 135 floor traces to exactly one call: `chrome.userScripts.execute`, which Chrome documents as available from Chrome 135. Supporting version facts from current Chrome docs: `chrome.userScripts` base API from Chrome 120; `configureWorld` `worldId` and `getWorldConfigurations` from Chrome 133; `execute()` from Chrome 135. The MV3 manifest floor of 135 is therefore required by `executeScript`, not by the registration path.
 
@@ -124,7 +127,7 @@ Observed in `violentmonkey/src/injected/web/gm-api.js` (exported surfaces):
 - `GM_API_CTX`: `GM_addValueChangeListener`, `GM_removeValueChangeListener`, `GM_getResourceText`, `GM_getResourceURL`, `GM_registerMenuCommand`, `GM_unregisterMenuCommand`, `GM_notification`, `GM_xmlhttpRequest` (plus `GM4_ALIAS` async aliases).
 - `GM_API`: `GM_addElement`, `GM_addStyle`, `GM_openInTab`, `GM_setClipboard`, `GM_log`.
 
-Interpretation: the full GM surface must be preserved as-is. The candidate test runner (Phase 3) executes in the same USER_SCRIPT world via the same engine, so GM API behavior during tests matches production by construction. Do not reimplement GM APIs for the agent path.
+Interpretation: the full GM surface must be preserved as-is. The candidate test runner (Phase 3) executes in the same USER_SCRIPT world via the same engine, which is a strong starting point for test fidelity, but it is a hypothesis, not a completed compatibility proof: temporary candidate execution has not been shown to reproduce full metadata handling, grants, `@require`/`@resource` loading, run timing, frame targeting, cleanup, and navigation behavior. Do not reimplement GM APIs for the agent path. The verification matrix in D5 must be completed before test results are treated as production-equivalent.
 
 ## 10. Manifest, permissions, and build targets
 
@@ -138,13 +141,13 @@ Observed in `violentmonkey/src/manifest.yml` plus the MV3 transform in `violentm
 
 ## 11. Feature classification
 
-Classification key: **upstream complete** (works today, preserve it), **upstream requiring extension work** (exists but needs EvilMonkey-side changes), **new** (design and build).
+Classification key: **upstream complete** (works today, preserve it), **upstream requiring extension work** (exists but needs EvilMonkey-side changes), **new** (design and build). A class may carry the qualifier "verification pending" where the feature exists upstream per the plan's product goals but file-level verification is deferred to a later phase.
 
 | Feature | Class | Basis |
 |---|---|---|
 | Userscript registration, execution, and lifecycle via `chrome.userScripts` | Upstream complete | Section 7 |
 | GM API surface | Upstream complete | Section 9 |
-| Script storage, metadata DB, import/export conventions | Upstream complete | Section 8; import/export per plan product goals, file-level verification deferred to Phase 1 |
+| Script storage, metadata DB, import/export conventions | Upstream complete; verification pending | Section 8; import/export per plan product goals, file-level verification deferred to Phase 1 |
 | External agent script management via `@violentmonkey/mcp` (stdio and HTTP) | Upstream complete | Section 2; verified against upstream README and protocol docs |
 | MCP pairing, approval UI, token lifecycle, disconnect | Upstream complete | Section 6; keep compatible, do not fork |
 | MV3 build, service worker, `<all_urls>` host model | Upstream complete | Section 10 |
@@ -152,7 +155,7 @@ Classification key: **upstream complete** (works today, preserve it), **upstream
 | Extension-page workspace fallback | Upstream requiring extension work | Options page infrastructure exists (`options/index.html`); a workspace route is new |
 | MCP reconnection UX after worker/browser restart | Upstream requiring extension work | Lifecycle is manual today (section 6); the workspace must surface disconnected state and recovery steps |
 | Extension-side read-only MCP mode | Upstream requiring extension work | Recommended by upstream `docs/security.md` (reject writes with 403); not implemented in `mcp.js` |
-| Chrome 138 `userScripts` permission-note flow | Upstream requiring extension work | Branch exists in `browser-scripts-api.js`; platform behavior unverified (U8) |
+| Chrome 138 `userScripts` permission-note flow | Upstream requiring extension work | Branch exists in `browser-scripts-api.js`; platform behavior unverified (U4) |
 | Persistent agent workspace (Side Panel) | New | Nothing in the baseline |
 | Session orchestrator, checkpoints, budgets, cancellation | New | Nothing in the baseline; must survive worker suspension via persisted state |
 | Policy gate (scope, approvals, redaction, exact-revision install) | New | Nothing in the baseline |
@@ -206,8 +209,8 @@ Verified against current official and primary-source documentation on 2026-10-14
 
 Each decision records the chosen path, the alternatives considered, and the consequence. Unresolved items are collected in section 18, not buried here.
 
-**D1: Reuse the upstream MCP server and pairing flow unchanged.**
-Pin `@violentmonkey/mcp` 0.1.1 / protocol version 1 / tool negotiation as the compatibility contract. Extend the extension's registered handlers only where a measured gap exists. Alternatives: fork the server (rejected: diverges schemas, duplicates approval, loses upstream fixes); design a second pairing system (rejected by the spec's non-negotiables). Consequence: external Claude Code and Codex access works with zero extension changes; EvilMonkey must track upstream protocol changes and re-audit on version bumps.
+**D1: Reuse the upstream MCP server and pairing flow unchanged for script management.**
+Pin `@violentmonkey/mcp` at commit `07fb99c31a7c100adcde175edde6200180e5dc41` / protocol version 1 / tool negotiation as the compatibility contract. Alternatives: fork the server (rejected: diverges schemas, duplicates approval, loses upstream fixes); design a second pairing system (rejected by the spec's non-negotiables). Consequence: external Claude Code and Codex access works with zero extension changes; EvilMonkey must track upstream protocol changes and re-audit on version bumps. Note: extending the extension's registered handlers is an internal capability step only. It does not by itself make new tools callable through the external MCP path, because the server validates against its own zod schemas and ignores unknown client handler names (section 2). The external registration path for new EvilMonkey browser tools is decided separately in D9.
 
 **D2: Embedded agent sessions require a local companion; the extension never hosts an agent runtime.**
 Observed vendor docs offer no in-browser session runtime for Claude Code or Codex. Alternatives: direct-API-only embedded sessions (kept as Phase 6, separate choice, not a substitute); extension-hosted WASM agent loop (rejected: no vendor support, fabricated capability). Consequence: the companion is a hard distribution dependency for the embedded workflows; its install, update, and uninstall story must be designed in Phase 4. The companion must not reimplement browser tools: it calls the extension's single tool service through one authenticated channel, and the policy gate applies equally to companion-driven and MCP-driven calls.
@@ -219,7 +222,20 @@ Side Panel needs only the `sidePanel` permission and `side_panel` manifest key a
 The permission cannot be requested as optional (verified in the official permissions reference), shows a strong install warning, detaches when DevTools opens, and is subject to enterprise policy blocks. Alternatives: request it upfront (rejected: warning cost and policy risk before the feature set justifies it); never use it (rejected: the advanced track legitimately needs network bodies and heap data). Consequence: the Phase 3 vertical slice ships on the no-debugger capability matrix; debugger-backed tools are an explicit, separately approved phase gate with their own UX, warning copy, and detach handling.
 
 **D5: Candidate Curse tests run through the existing userscript engine, with test authorization separate from install authorization.**
-Use `chrome.userScripts.execute` and temporary registrations for bounded test runs, then discard them; persistent install happens only after exact-revision approval. Alternatives: `chrome.scripting.executeScript` (rejected: ISOLATED world, different isolation semantics than the USER_SCRIPT world Curses run in); testing in the live persistent script (rejected: conflates test with install). Consequence: test fidelity matches production GM behavior by construction; the runner must still report what cannot be rolled back (network effects, server-side changes, downloads).
+Use `chrome.userScripts.execute` and temporary registrations for bounded test runs, then discard them; persistent install happens only after exact-revision approval. Alternatives: `chrome.scripting.executeScript` (rejected: ISOLATED world, different isolation semantics than the USER_SCRIPT world Curses run in); testing in the live persistent script (rejected: conflates test with install). Consequence: sharing the USER_SCRIPT world and engine is a strong starting point for test fidelity, but it is a hypothesis, not a completed compatibility proof. Temporary candidate execution has not been demonstrated to reproduce full metadata handling, grants, `@require`/`@resource` loading, run timing, frame targeting, cleanup, and navigation behavior. Before test results are treated as production-equivalent, Phase 3 must complete this verification matrix as part of the test-runner work:
+
+| Dimension | What must be verified |
+|---|---|
+| GM APIs | Every GM function behaves identically in temporary candidate execution and in persistent install. |
+| `@require` | Required scripts load and execute in the same order and timing as production. |
+| `@resource` | Resources resolve and are available to `GM_getResourceText`/`GM_getResourceURL` the same way. |
+| Grants | The candidate's grant set is enforced identically, including `@grant none` semantics. |
+| Run timing | `document_start`, `document_end`, `document_idle`, and `injectImmediately` behavior match production. |
+| Frames | `allFrames` targeting and per-frame isolation match production. |
+| Cleanup | Temporary registration leaves no residual scripts, storage entries, or listeners after the test. |
+| Navigation | Behavior across SPA route changes and full navigations matches production. |
+
+Until the matrix passes, test reports must label fidelity as unverified. The runner must still report what cannot be rolled back (network effects, server-side changes, downloads).
 
 **D6: Session state is persisted in `chrome.storage` (session for ephemeral, local for checkpoints); tokens and live handles are never persisted.**
 Follows the existing storage-bucket pattern. Alternatives: module-memory only (rejected: worker suspension loses tasks); persisting the MCP token for auto-reconnect (rejected: contradicts the upstream security model without explicit user consent). Consequence: the workspace can recover transcripts and checkpoints after worker death; reconnecting the MCP server remains a manual, approved step.
@@ -229,6 +245,20 @@ User-supplied keys, model selection, usage display where the provider exposes it
 
 **D8: Keep the Chrome 135 minimum until evidence supports changing it.**
 The floor is traced to `chrome.userScripts.execute` (section 7). Alternatives: lower the floor and degrade `executeScript` (rejected: breaks the shared injection path the test runner depends on). Consequence: revisit only if the `execute()` usage can be isolated or Chrome backports it; Side Panel work does not affect the floor.
+
+**D9: New EvilMonkey browser tools need an explicit external-MCP registration path; the choice is a Phase 1/2 input.**
+D1 pins the upstream server for script management, but Phase 2 and Phase 3 add browser tools (investigation, console, test-run) that must be callable through the external MCP path as well as the embedded path. Two constraints must be kept separate because they have different costs:
+
+- "Don't fork the server": keep upstream pairing, the wire protocol, and the approval flow intact, and keep receiving upstream fixes. Violating this duplicates the trust model and the pairing UX.
+- "Don't change the server": leave the upstream zod schemas and registry code untouched. Violating this means maintaining a patched server build and re-applying the patch on every upstream release.
+
+Candidate mechanisms:
+
+- (a) Upstream the new tools into `@violentmonkey/mcp`. One pairing flow, one token, schemas maintained and security-reviewed by upstream. Cost: release cadence depends on upstream acceptance, and EvilMonkey-specific tools may not belong upstream. Supporting signal: upstream's own non-goals list names `script_logs` and `tab_eval` as planned, so generic browser tools are the natural upstream home.
+- (b) Run a second EvilMonkey MCP server alongside the upstream one on a different port. Full control over schemas and release cadence; the upstream server stays untouched. Cost: two tokens, two pairing approvals, and two server configurations for the agent; the extension must serve two WebSocket clients. The single-connection limit is per server instance, so this is permitted by the protocol, but the dual-pairing UX must be designed.
+- (c) Pass-through or registration: teach the upstream server to forward unknown tools to the extension and accept extension-supplied schemas. Cost: reopens the prompt-injection channel section 4 guards against, because tool descriptions are injected into the agent's context and would then be extension-controlled. This changes the server's trust model and is not recommended without upstream's own design.
+
+Decision criteria for Phase 1/2: which planned tools are generic enough for upstream (favoring (a)) versus EvilMonkey-specific; whether the double-pairing UX cost of (b) is acceptable for the first release; whether upstream would accept (a) or a scoped variant of (c). The choice is recorded here as an open input, not a default: Phase 2 browser-tool work must not assume external exposure until this is decided. Internal exposure through the shared browser-tool service and the companion channel (D2) can proceed regardless, since those paths do not go through the upstream server's registry.
 
 ## 16. Security boundaries
 
@@ -259,7 +289,7 @@ Explicit open items. Each names what is unknown and what would resolve it.
 - **U6: Codex app-server stability.** The app server is documented as the rich-client interface but described by third parties as experimental. Resolution: verify the current stability statement in the official app-server docs during Phase 5 planning; prefer the SDK surface that is documented as stable.
 - **U7: Anthropic commercial terms for SDK use in a distributed product.** The docs direction is API-key auth for third-party products; the exact terms text was not re-read in this audit. Resolution: read the current Commercial Terms before Phase 4 ships anything that bundles or recommends the SDK.
 - **U8: `chrome.storage.session` vs `local` split for session data.** The pattern is chosen (D6) but retention, quota, and privacy disclosures are not specified. Resolution: Phase 1 data-retention design.
-- **U9: Exact upstream server version at implementation time.** This audit inspected upstream `main` on 2026-10-14 and the extension's pinned `^0.1.1` client. If implementation starts against a newer server release, re-run the tool-schema and protocol diff (sections 2 and 5) first.
+- **U9: Exact upstream server version at implementation time.** This audit inspected upstream `violentmonkey/mcp` at commit `07fb99c31a7c100adcde175edde6200180e5dc41` (2026-10-09, one commit after the v0.1.1 release) with the extension's pinned `^0.1.1` client. If implementation starts against a newer server release, re-run the tool-schema and protocol diff (sections 2 and 5) first.
 
 ## 19. References
 
@@ -272,7 +302,7 @@ Local sources inspected (paths in the `evilmonkey` repo unless noted):
 - `violentmonkey/src/common/browser-scripts-api.js`, `violentmonkey/src/background/utils/preinject-core.js`
 - `violentmonkey/src/background/utils/storage.js`, `violentmonkey/src/injected/web/gm-api.js`
 - `violentmonkey/src/options/views/tab-settings/vm-mcp.vue`, `violentmonkey/DEVELOPMENT.md`
-- Upstream `violentmonkey/mcp`: `README.md`, `docs/design.md`, `docs/protocol.md`, `docs/security.md`, `packages/protocol/src/tools.ts`, `packages/protocol/src/wire.ts`, `packages/client/src/index.ts`, package versions for `@violentmonkey/mcp`, `@violentmonkey/mcp-client`, `@violentmonkey/mcp-protocol` (0.1.1 each)
+- Upstream `violentmonkey/mcp`: `README.md`, `docs/design.md`, `docs/protocol.md`, `docs/security.md`, `packages/protocol/src/tools.ts`, `packages/protocol/src/wire.ts`, `packages/client/src/index.ts`, package versions for `@violentmonkey/mcp`, `@violentmonkey/mcp-client`, `@violentmonkey/mcp-protocol` (0.1.1 each), inspected at commit `07fb99c31a7c100adcde175edde6200180e5dc41`
 
 Official documentation checked 2026-10-14 (claim-level verification, not exhaustive re-reads):
 

@@ -133,10 +133,12 @@ function evmEvaluateAssertion(assertion) {
   return ev;
 }
 
-/** Serialize the evaluator plus one assertion into executable code. */
+/** Serialize the evaluator plus one assertion into executable code.
+ * The evaluated script resolves to { evidence } or { error }; execute
+ * rejections are also caught by the caller and degrade to INCONCLUSIVE. */
 function evaluatorCode(assertion) {
   const payload = JSON.stringify(assertion).replace(/<\/script/gi, '<\\/script');
-  return `(${evmEvaluateAssertion.toString()})(${payload});`;
+  return `(function(){ try { return { evidence: (${evmEvaluateAssertion.toString()})(${payload}) }; } catch (e) { return { error: String((e && e.message) || e) }; } })();`;
 }
 
 function withTimeout(promise, ms, label) {

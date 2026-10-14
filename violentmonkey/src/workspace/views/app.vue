@@ -161,8 +161,9 @@ async function onCheckpoint() {
 
 async function onStop() {
   try {
-    stopReport.value = await sendCmdDirectly('EvmSessionStop', { id: selectedId.value });
+    const report = await sendCmdDirectly('EvmSessionStop', { id: selectedId.value });
     await refresh();
+    stopReport.value = report;
   } catch (e) {
     error.value = `${e?.message || e}`;
   }
@@ -186,3 +187,4 @@ async function onDescribeTarget() {
 
 onMounted(refresh);
 </script>
+

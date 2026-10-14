@@ -57,3 +57,21 @@
   gap: 6px;
   margin: 8px 0;
 }
+.ws-input {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 12px;
+  padding: 4px 6px;
+  margin: 4px 0;
+  border: 1px solid var(--fill-5, #ddd);
+  border-radius: 4px;
+}
+textarea.ws-input {
+  font-family: monospace;
+  resize: vertical;
+}
+.ws-scroll {
+  max-height: 200px;
+  overflow: auto;
+}
+

@@ -80,6 +80,103 @@
           <pre class="ws-mono" v-text="evidenceInfo" />
         </div>
       </div>
+        <h2>Curse (Phase 3)</h2>
+        <div class="ws-actions">
+          <button @click="showCandidateForm = !showCandidateForm" v-text="showCandidateForm ? 'Hide form' : 'New candidate'" />
+          <button @click="onCandidateList" :disabled="!isLive">Refresh candidates</button>
+        </div>
+        <div v-if="showCandidateForm" class="ws-card">
+          <div class="ws-row"><strong>Code</strong></div>
+          <textarea v-model="newCode" rows="8" class="ws-mono ws-input" placeholder="// candidate userscript code; runs in the page during tests"></textarea>
+          <div class="ws-row"><strong>Name</strong><input v-model="newName" class="ws-input" /></div>
+          <div class="ws-row"><strong>Matches</strong><input v-model="newMatches" class="ws-input" placeholder=https://example.com/* (comma separated; defaults to session origin)" /></div>
+          <div class="ws-row"><strong>Grants</strong><input v-model="newGrants" class="ws-input" placeholder="none (comma separated)" /></div>
+          <div class="ws-row"><strong>Run at</strong>
+            <select v-model="newRunAt" class="ws-input">
+              <option value="document_idle">document_idle</option>
+              <option value="document_end">document_end</option>
+              <option value="document_start">document_start</option>
+            </select>
+          </div>
+          <div class="ws-row"><strong>Assertions (JSON array)</strong></div>
+          <textarea v-model="newAssertionsJson" rows="4" class="ws-mono ws-input" :placeholder="assertionPlaceholder"></textarea>
+          <div v-if="reviseParent" class="ws-banner" v-text="`Revising ${reviseParent.slice(0, 8)} from failed assertions.`" />
+          <div class="ws-actions">
+            <button @click="onCandidateCreate" :disabled="!isLive || !newCode.trim()">Create candidate</button>
+          </div>
+        </div>
+        <div v-if="!candidates.length" class="ws-muted">No candidates yet.</div>
+        <div
+          v-for="c in candidates"
+          :key="c.id"
+          class="ws-card"
+          :class="{ active: c.id === selectedRev }"
+          @click="onCandidateSelect(c.id)">
+          <div class="ws-row">
+            <strong v-text="c.id.slice(0, 8)" />
+            <span v-text="c.name" />
+            <span v-if="c.installed" class="ws-muted">(installed)</span>
+            <span v-if="c.repairsFailure" class="ws-muted">(repair)</span>
+          </div>
+          <div class="ws-muted ws-mono" v-text="`${c.testCount} test(s)`" />
+        </div>
+        <template v-if="candidateDetail">
+          <h2 v-text="`Candidate ${candidateDetail.id.slice(0, 8)}`" />
+          <div class="ws-card">
+            <div class="ws-row"><strong>Name:</strong><span v-text="candidateDetail.metadata.name" /></div>
+            <div class="ws-row"><strong>Matches:</strong><span class="ws-mono" v-text="candidateDetail.metadata.matches.join(', ') || '(session origin)'" /></div>
+            <div class="ws-row"><strong>Grants:</strong><span class="ws-mono" v-text="candidateDetail.metadata.grants.join(', ') || 'none'" /></div>
+            <div class="ws-row"><strong>Run at:</strong><span v-text="candidateDetail.metadata.runAt" /></div>
+            <div v-if="candidateDetail.externalDestinations.length" class="ws-banner warn">
+              <div><strong>External destinations (heuristic scan):</strong></div>
+              <ul>
+                <li v-for="u in candidateDetail.externalDestinations" :key="u" class="ws-mono" v-text="u" />
+              </ul>
+            </div>
+            <div class="ws-row"><strong v-text="candidateDetail.diff ? 'Code (diff vs parent):' : 'Code:'" /></div>
+            <pre v-if="!candidateDetail.diff" class="ws-mono ws-scroll" v-text="candidateDetail.code" />
+            <pre v-else class="ws-mono ws-scroll"><div v-for="(l, idx) in candidateDetail.diff" :key="idx" :style="diffStyle(l.type)" v-text="`${l.type === 'add' ? '+' : l.type === 'del' ? '-' : ' '} ${l.text}`" /></pre>
+            <div class="ws-banner warn">
+              Test fidelity is unverified. Temporary execution does not reproduce GM APIs, @require/@resource loading, grant enforcement, or production run timing. Treat results as evidence from a bounded run, not as production equivalence.
+            </div>
+            <div class="ws-actions">
+              <button @click="onTestAuthorize" :disabled="!isLive">Authorize test run</button>
+              <button @click="onTestRun" :disabled="!isLive || !candidateDetail.testAuthorized">Run test</button>
+              <button @click="onApproveInstall" :disabled="!isLive">Approve install</button>
+              <button @click="onInstall" :disabled="!isLive || !candidateDetail.installApproved">Install</button>
+              <button @click="onReviseFromFailure" :disabled="!isLive || !hasFailedAssertions">Revise from failure</button>
+            </div>
+            <div class="ws-row ws-muted" v-text="`Test authorized: ${candidateDetail.testAuthorized}; install approved: ${candidateDetail.installApproved}`" />
+            <h2>Assertions</h2>
+            <div v-if="!latestAssertions.length" class="ws-muted">No assertions defined.</div>
+            <div v-for="a in latestAssertions" :key="a.id" class="ws-card">
+              <div class="ws-row"><strong v-text="a.status" /><span v-text="a.description" /></div>
+              <div class="ws-muted ws-mono" v-text="a.kind" />
+              <pre class="ws-mono" v-text="JSON.stringify(a.evidence || {}, null, 2)" />
+            </div>
+            <h2>Test reports</h2>
+            <div v-if="!candidateDetail.testReports.length" class="ws-muted">No test runs yet.</div>
+            <div v-for="r in candidateDetail.testReports" :key="r.id" class="ws-card">
+              <div class="ws-row"><strong>Fidelity:</strong><span v-text="r.fidelity.status" /></div>
+              <div class="ws-muted ws-mono" v-text="new Date(r.at).toLocaleString()" />
+              <div class="ws-row"><strong>Lifecycle:</strong><span class="ws-mono" v-text="lifecycleSummary(r.lifecycle)" /></div>
+              <div v-for="m in r.fidelity.matrix" :key="m.dimension" class="ws-row">
+                <span v-text="`${m.dimension}: ${m.status}`" />
+              </div>
+              <div v-if="r.irreversible" class="ws-banner warn">
+                <div><strong>Irreversible effects</strong></div>
+                <div>Cleaned up:</div>
+                <ul><li v-for="(ci, i) in r.irreversible.cleanedUp" :key="i" v-text="ci" /></ul>
+                <div>Not reverted:</div>
+                <ul><li v-for="(ni, i) in r.irreversible.notReverted" :key="i" v-text="ni" /></ul>
+              </div>
+              <div v-if="r.warnings && r.warnings.length" class="ws-banner warn">
+                <div><strong>Warnings</strong></div>
+                <ul><li v-for="(w, i) in r.warnings" :key="i" v-text="w" /></ul>
+              </div>
+            </div>
+          </div>
+        </template>
       <h2>Events</h2>
       <ul class="ws-events">
         <li v-for="e in events" :key="e.id">
@@ -112,6 +209,19 @@ const stopReport = ref(null);
 const targetInfo = ref('');
 const evidenceInfo = ref('');
 const evidenceTitle = ref('');
+const candidates = ref([]);
+const selectedRev = ref('');
+const candidateDetail = ref(null);
+const showCandidateForm = ref(false);
+const newCode = ref('');
+const newName = ref('Untitled Curse');
+const newMatches = ref('');
+const newGrants = ref('none');
+const newRunAt = ref('document_idle');
+const newAssertionsJson = ref('');
+const reviseParent = ref('');
+const reviseContext = ref(null);
+const assertionPlaceholder = '[{"kind":"selector-hidden","description":"Sponsored cards are hidden","selector":".sponsored-card"}]  // kinds: selector-hidden, selector-count, selector-visible, selector-text, js-eval';
 
 const backendReady = computed(() => false); // no agent backend in Phase 1
 const target = computed(() => detail.value?.session?.target);
@@ -145,6 +255,12 @@ async function select(id, keep = false) {
   stopReport.value = null;
   targetInfo.value = '';
   evidenceInfo.value = '';
+  candidates.value = [];
+  selectedRev.value = '';
+  candidateDetail.value = null;
+  showCandidateForm.value = false;
+  reviseParent.value = '';
+  reviseContext.value = null;
   try {
     detail.value = await sendCmdDirectly('EvmSessionGet', { id });
   } catch (e) {
@@ -228,6 +344,180 @@ async function onConsoleRead() {
   await runEvidenceTool('Console', 'console.read', {});
 }
 
+const latestAssertions = computed(() => {
+  const d = candidateDetail.value;
+  if (!d) return [];
+  const reports = d.testReports || [];
+  if (reports.length) return reports[reports.length - 1].assertions || [];
+  return (d.assertions || []).map(a => ({ ...a, status: 'NOT_RUN', evidence: {} }));
+});
+const hasFailedAssertions = computed(
+  () => latestAssertions.value.some(a => a.status === 'FAIL'),
+);
+
+function diffStyle(type) {
+  if (type === 'add') return { color: '#1a7f37' };
+  if (type === 'del') return { color: '#b42318' };
+  return {};
+}
+
+function lifecycleSummary(lc) {
+  if (!lc) return '';
+  return [
+    `authorized:${!!lc.authorized}`,
+    `registered:${!!lc.registered}`,
+    `executed:${!!lc.executed}`,
+    `unregistered:${!!lc.unregistered}`,
+    `cleanup:${lc.cleanupVerified ? 'verified' : 'unverified'}`,
+  ].join(' ');
+}
+
+async function onCandidateList() {
+  try {
+    candidates.value = await sendCmdDirectly('EvmCandidateList', { id: selectedId.value });
+  } catch (e) {
+    error.value = `${e?.message || e}`;
+  }
+}
+
+async function onCandidateSelect(revId) {
+  selectedRev.value = revId;
+  try {
+    candidateDetail.value = await sendCmdDirectly('EvmCandidateGet', {
+      id: selectedId.value,
+      revisionId: revId,
+    });
+  } catch (e) {
+    error.value = `${e?.message || e}`;
+  }
+}
+
+async function onCandidateCreate() {
+  error.value = '';
+  let assertions = [];
+  try {
+    if (newAssertionsJson.value.trim()) {
+      assertions = JSON.parse(newAssertionsJson.value);
+      if (!Array.isArray(assertions)) throw new Error('assertions JSON must be an array');
+    }
+  } catch (e) {
+    error.value = `bad assertions JSON: ${e?.message || e}`;
+    return;
+  }
+  try {
+    const res = await sendCmdDirectly('EvmCandidateCreate', {
+      id: selectedId.value,
+      code: newCode.value,
+      metadata: {
+        name: newName.value.trim() || 'Untitled Curse',
+        matches: newMatches.value.split(',').map(s => s.trim()).filter(Boolean),
+        grants: newGrants.value.split(',').map(s => s.trim()).filter(Boolean),
+        runAt: newRunAt.value,
+      },
+      assertions,
+      parentRevisionId: reviseParent.value,
+      repairContext: reviseContext.value,
+    });
+    newCode.value = '';
+    newAssertionsJson.value = '';
+    reviseParent.value = '';
+    reviseContext.value = null;
+    showCandidateForm.value = false;
+    await onCandidateList();
+    await onCandidateSelect(res.revisionId);
+  } catch (e) {
+    error.value = `${e?.message || e}`;
+  }
+}
+
+async function onTestAuthorize() {
+  try {
+    await sendCmdDirectly('EvmTestAuthorize', {
+      id: selectedId.value,
+      revisionId: selectedRev.value,
+    });
+    await onCandidateSelect(selectedRev.value);
+    showMessage('Test run authorized for this revision');
+  } catch (e) {
+    error.value = `${e?.message || e}`;
+  }
+}
+
+async function onTestRun() {
+  try {
+    const res = await sendCmdDirectly('EvmToolInvoke', {
+      sessionId: selectedId.value,
+      tool: 'curse.test',
+      args: { revisionId: selectedRev.value },
+    });
+    if (!res.ok) {
+      error.value = `test failed: ${res.reason}${res.message ? ` (${res.message})` : ''}`;
+    }
+    await onCandidateList();
+    await onCandidateSelect(selectedRev.value);
+  } catch (e) {
+    error.value = `${e?.message || e}`;
+  }
+}
+
+async function onApproveInstall() {
+  try {
+    const res = await sendCmdDirectly('EvmSessionApproveRevision', {
+      id: selectedId.value,
+      revisionId: selectedRev.value,
+    });
+    if (!res.approved) {
+      error.value = 'install approval was not recorded (session may no longer be active)';
+    } else {
+      showMessage('Install approved for the exact displayed revision');
+    }
+    await onCandidateSelect(selectedRev.value);
+  } catch (e) {
+    error.value = `${e?.message || e}`;
+  }
+}
+
+async function onInstall() {
+  try {
+    const res = await sendCmdDirectly('EvmCurseInstall', {
+      id: selectedId.value,
+      revisionId: selectedRev.value,
+    });
+    showMessage(`Installed as userscript id ${res.scriptId}`);
+    await onCandidateList();
+    await onCandidateSelect(selectedRev.value);
+  } catch (e) {
+    error.value = `${e?.message || e}`;
+  }
+}
+
+function onReviseFromFailure() {
+  const d = candidateDetail.value;
+  if (!d) return;
+  const failed = latestAssertions.value.filter(a => a.status === 'FAIL');
+  reviseParent.value = d.id;
+  reviseContext.value = {
+    fromRevisionId: d.id,
+    failedAssertionIds: failed.map(a => a.id),
+    failedAssertions: failed.map(a => ({
+      id: a.id,
+      kind: a.kind,
+      description: a.description,
+      evidence: a.evidence,
+      conditions: a.conditions,
+    })),
+    note: 'manual revision from failed assertions; edit the code to address the evidence, then create the candidate',
+  };
+  newCode.value = d.code;
+  newName.value = d.metadata.name;
+  newMatches.value = (d.metadata.matches || []).join(', ');
+  newGrants.value = (d.metadata.grants || []).join(', ');
+  newRunAt.value = d.metadata.runAt || 'document_idle';
+  newAssertionsJson.value = JSON.stringify(d.assertions || [], null, 2);
+  showCandidateForm.value = true;
+}
+
 onMounted(refresh);
 </script>
+
 

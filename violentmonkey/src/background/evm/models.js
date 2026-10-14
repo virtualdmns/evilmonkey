@@ -104,6 +104,12 @@ export function createSession({
     stopRequested: false,
     /** operations in flight when stop was requested (for the recall report) */
     inFlight: [],
+    /** candidate Curse revisions under test: { [revisionId]: candidate } */
+    candidates: {},
+    /** explicit per-revision test authorizations: { [revisionId]: { approvedAt } }.
+     * Separate from revisionApprovals (install); test authorization never
+     * implies install approval. */
+    testApprovals: {},
     /** exact-revision install approvals: { [revisionId]: { approvedAt } } */
     revisionApprovals: {},
     /** event tail, newest last; persisted to durable storage at checkpoints */
@@ -203,3 +209,4 @@ export async function createCandidateRevision({ code = '', metadata = {} } = {})
 export async function revisionIdOf({ code = '', metadata = {} } = {}) {
   return (await createCandidateRevision({ code, metadata })).id;
 }
+

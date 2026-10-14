@@ -33,6 +33,14 @@ import {
   registerTool,
 } from './policy';
 import { getCapabilities } from './evidence';
+import './runner';
+import {
+  buildInstallSource,
+  createCandidate,
+  lineDiff,
+  scanExternalDestinations,
+} from './curse';
+import { parseScript } from '../utils/db';
 import {
   getEventTail,
   getIndex,
@@ -206,6 +214,156 @@ addOwnCommands({
   },
 
   /**
+   * Create a candidate Curse revision on a session. Links an optional
+   * parent revision and repair context (failed assertion evidence) so a
+   * failed assertion can feed a revision cycle: fail -> evidence ->
+   * new revision -> re-test.
+   */
+  async EvmCandidateCreate({
+    id, code, metadata, assertions, parentRevisionId, repairContext,
+  } = {}) {
+    const session = await getLiveSession(id);
+    if (!session) throw new Error('No live session');
+    if (session.status !== SESSION_ACTIVE) {
+      throw new Error(`session-not-active:${session.status}`);
+    }
+    if (!code) throw new Error('code is required');
+    const candidate = await createCandidate({
+      code: String(code),
+      metadata: metadata || {},
+      assertions: assertions || [],
+      parentRevisionId: parentRevisionId || '',
+      repairContext: repairContext || null,
+    });
+    session.candidates = session.candidates || {};
+    session.candidates[candidate.id] = candidate;
+    await appendEvent(touch(session), 'candidate-created', {
+      revisionId: candidate.id.slice(0, 12),
+      parent: (parentRevisionId || '').slice(0, 12) || null,
+      repairsFailure: !!repairContext,
+      assertionCount: candidate.assertions.length,
+    });
+    await saveLiveSession(session);
+    return { revisionId: candidate.id, metadata: candidate.metadata };
+  },
+
+  /** List candidate revision summaries for a session. */
+  async EvmCandidateList({ id } = {}) {
+    const session = await getLiveSession(id);
+    if (!session) return [];
+    return Object.values(session.candidates || {}).map(c => ({
+      id: c.id,
+      name: c.metadata.name,
+      version: c.metadata.version,
+      createdAt: c.createdAt,
+      parentRevisionId: c.parentRevisionId || null,
+      repairsFailure: !!c.repairContext,
+      testCount: (c.testReports || []).length,
+      lastTestAt: c.testReports && c.testReports.length
+        ? c.testReports[c.testReports.length - 1].at
+        : 0,
+      installed: !!c.installed,
+    })).sort((a, b) => b.createdAt - a.createdAt);
+  },
+
+  /**
+   * Full candidate detail for the approval UI: code (or diff against the
+   * parent revision), metadata, grants, matched sites, heuristic external
+   * destinations, assertions with their latest results, test reports, and
+   * the current authorization states.
+   */
+  async EvmCandidateGet({ id, revisionId } = {}) {
+    const session = await getLiveSession(id);
+    if (!session) throw new Error('No live session');
+    const candidate = session.candidates && session.candidates[revisionId];
+    if (!candidate) throw new Error(`unknown revision: ${revisionId}`);
+    const parent = candidate.parentRevisionId
+      && session.candidates[candidate.parentRevisionId];
+    return {
+      id: candidate.id,
+      metadata: candidate.metadata,
+      assertions: candidate.assertions,
+      parentRevisionId: candidate.parentRevisionId || null,
+      repairContext: candidate.repairContext,
+      testReports: candidate.testReports || [],
+      installed: candidate.installed,
+      createdAt: candidate.createdAt,
+      code: candidate.code,
+      parentCode: parent ? parent.code : null,
+      diff: parent ? lineDiff(parent.code, candidate.code) : null,
+      externalDestinations: scanExternalDestinations(candidate.code),
+      testAuthorized: !!(session.testApprovals && session.testApprovals[revisionId]),
+      installApproved: !!(session.revisionApprovals && session.revisionApprovals[revisionId]),
+    };
+  },
+
+  /**
+   * Explicit test authorization for one candidate revision. Recorded
+   * separately from install approval: authorizing a test run never
+   * implies install approval.
+   */
+  async EvmTestAuthorize({ id, revisionId } = {}) {
+    if (!revisionId) throw new Error('revisionId is required');
+    const session = await getLiveSession(id);
+    if (!session || session.status !== SESSION_ACTIVE) {
+      return { authorized: false };
+    }
+    if (!session.candidates || !session.candidates[revisionId]) {
+      throw new Error(`unknown revision: ${revisionId}`);
+    }
+    session.testApprovals = session.testApprovals || {};
+    session.testApprovals[revisionId] = { approvedAt: Date.now() };
+    await appendEvent(touch(session), 'test-authorized', {
+      revisionId: revisionId.slice(0, 12),
+    });
+    await saveLiveSession(session);
+    return { authorized: true };
+  },
+
+  /**
+   * Install a candidate as a persistent userscript through the
+   * baseline script store. The gate is enforced here, in code, not just
+   * in the UI: without an approval bound to this exact revision id,
+   * installation is refused.
+   */
+  async EvmCurseInstall({ id, revisionId } = {}) {
+    const gate = await checkInstallApproval(id, revisionId);
+    if (!gate.allowed) {
+      throw new Error(
+        `install-refused:${gate.reason}; installation requires approval of the exact displayed revision and its permissions`,
+      );
+    }
+    const session = await getLiveSession(id);
+    const candidate = session.candidates && session.candidates[revisionId];
+    if (!candidate) throw new Error(`unknown revision: ${revisionId}`);
+    const source = buildInstallSource(candidate);
+    let result;
+    try {
+      result = await parseScript({
+        code: source,
+        message: '',
+        bumpDate: true,
+        reloadTab: false,
+        config: { enabled: 1 },
+      });
+    } catch (e) {
+      throw new Error(`install failed: ${e && e.message ? e.message : e}`);
+    }
+    candidate.installed = {
+      scriptId: result.where.id,
+      installedAt: Date.now(),
+      revisionId,
+    };
+    await appendEvent(touch(session), 'curse-installed', {
+      revisionId: revisionId.slice(0, 12),
+      scriptId: result.where.id,
+    });
+    await saveLiveSession(session);
+    await updateIndexEntry(session, session.checkpointCount > 0);
+    return { installed: true, scriptId: result.where.id };
+  },
+
+  /**
    * Gated tool invocation for the workspace and future backends.
    * Every tool call passes through the shared policy gate.
    */
@@ -336,3 +494,4 @@ async function initEvm() {
 }
 
 initDependency(initEvm());
+

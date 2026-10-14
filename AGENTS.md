@@ -37,6 +37,8 @@ These instructions apply to the entire repository. More-specific `AGENTS.md` fil
 - Update documentation when user-facing behavior, setup, permissions, or architecture changes.
 - Keep generated build output out of source changes unless the task specifically requires packaged artifacts.
 
+Do not build bullshit AI slop. Think about if a human would actually use what you are putting together.
+
 ## Chrome Development Reference
 
 The extension package declares Node.js 24 or newer and pnpm 12.4.2. Run its scripts from `violentmonkey/`:
